@@ -12,6 +12,9 @@ uint32_t exec_proc();    // process whose execute is in progress (0 outside)
 bool half_pass();        // this pass only runs 60 Hz processes
 int32_t split(int32_t v);  // integer per-step amount for this step (half steps add up to v)
 void new_pass();
+// upstream's newer true 60 design (interp.cpp calls these); this port keeps the older one: no-ops
+inline void pass_begin(bool) {}
+inline void camera_draw_preview(bool) {}
 uint64_t pass();
 bool runs_60(uint32_t proc);  // the process executed at 60 Hz on this pass (not interpolated)
 bool drawing_60();            // the process being drawn runs at 60 Hz on this pass
