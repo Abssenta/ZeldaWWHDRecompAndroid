@@ -85,6 +85,12 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             setenv("WWHD_LANGUAGE", gameLanguage());
             applyFrameGenSettings();
             setenv("WWHD_APP_VERSION", CrashLogs.appVersion(this));  // the crash log's name
+            // command recording thread: automatic (the renderer decides), on or off (wwhd.env still wins)
+            int recordThread = prefs.getInt("record_thread", 0);
+            if (recordThread != 0) setenv("WWHD_RECORD_THREAD", recordThread == 1 ? "1" : "0");
+            // frame interpolation (Graphics > Frame rate): 0 off, 60 or 120 fps
+            int interp = prefs.getInt("interp_fps", 0);
+            if (interp != 0) setenv("WWHD_INTERP_FPS", String.valueOf(interp));
             applyEnvironment();
             CrashLogs.deleteShared(this, prefs);  // shared in an earlier run
             // a shader dump (WWHD_DUMP_SHADERS=<files>/shaders, debugging) left from an earlier start
@@ -130,6 +136,15 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     void setGameLanguage(String l) {
         prefs.edit().putString("language", l).commit();
+    }
+
+    // the command recording thread applies from the next start
+    void setRecordThread(int mode) {
+        if (mode == prefs.getInt("record_thread", 0)) return;
+        prefs.edit().putInt("record_thread", mode).commit();
+        new GameDialog(this).title(R.string.opt_record_thread).message(R.string.record_thread_restart)
+                .button(R.string.gpu_driver_later, null)
+                .button(R.string.res_restart_now, this::restartApp).show();
     }
 
     /** after the options menu closed with another language than it opened with */
@@ -238,6 +253,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             runCompile();
             return;
         }
+        // the last run ended unexpectedly: offer its log before the game starts (a game that closes
+        // again right after loading leaves no time to share it later)
+        if (!crashOffered) {
+            crashOffered = true;
+            CrashLogs.recordExit(this, prefs);
+            if (CrashLogs.offerNew(this, prefs, this::checkAndStart)) return;
+        }
         File base = baseDir();
         // testing: WWHD_CLEAR_SHADERS=1 (an intent extra) starts as with "Delete shader cache"
         if (Os.getenv("WWHD_CLEAR_SHADERS") != null) Backup.deleteTree(new File(getNoBackupFilesDir(), "shadercache"));
@@ -252,8 +274,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         if (failedDriver != null)
             new GameDialog(this).title(R.string.opt_gpu_driver).message(getString(R.string.gpu_driver_failed, failedDriver))
                     .button(R.string.opt_ok, null).show();
-        else CrashLogs.offerNew(this, prefs);  // the last run crashed
     }
+
+    private boolean crashOffered;  // once per process: the offer before the game starts
 
     // ------------------------------------------------------------------ GPU driver (Adreno)
     // A driver package the user installed (GpuDrivers), used instead of the system driver from the
@@ -1268,6 +1291,30 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     private File frameGenDll() { return new File(new File(getFilesDir(), "lsfg"), "Lossless.dll"); }
 
     private boolean frameGenOn() { return prefs.getBoolean("fg_enabled", false) && frameGenDll().exists(); }
+
+    // the frame rates the Frame rate setting offers: off, 60, and 120 where the display shows it
+    int[] interpRates() {
+        return maxRefreshHz() >= 118 ? new int[] {0, 60, 120} : new int[] {0, 60};
+    }
+
+    // the display's highest refresh rate (at least 60)
+    int maxRefreshHz() {
+        float hz = 60;
+        for (android.view.Display.Mode m : getWindowManager().getDefaultDisplay().getSupportedModes())
+            hz = Math.max(hz, m.getRefreshRate());
+        return Math.round(hz);
+    }
+
+    // frames shown per second without frame generation: 30, or the interpolated rate
+    int shownFps() {
+        int f = Native.getOption("interp_fps");
+        return f > 0 ? f : 30;
+    }
+
+    void setInterpFps(int fps) {
+        prefs.edit().putInt("interp_fps", fps).apply();
+        Native.setOption("interp_fps", fps);
+    }
 
     private void applyFrameGenSettings() {
         // the renderer generates frames only if the display can show them (also when switched on later)

@@ -20,6 +20,7 @@
 #include "ui_icons.h"
 #include "../gx2/gx2.h"
 #include "../input.h"
+#include "../interp.h"
 #include "../mods/climb.h"
 #include "../mods/mods.h"
 #include "../motion.h"
@@ -300,6 +301,7 @@ JNI_FN(jbyteArray, parseKey)(JNIEnv* env, jclass, jbyteArray data) {
 #include <sys/sysinfo.h>
 
 #include "../recomp/compile.h"
+#include "../recomp/locals.h"
 extern "C" const char wwhd_ops_bc[], wwhd_ops_bc_end[], wwhd_hooks[], wwhd_hooks_end[];  // recomp_data.S
 
 #ifdef WWHD_DEVICE_RECOMP
@@ -348,8 +350,9 @@ static std::string compile_code(const std::string& gameDir, const std::string& o
     progress.join();
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
-    LOG("[recomp] %s: %zu functions, %zu modules, %zu instructions in %.1f s, peak memory %ld MB%s%s", ok ? "done" : "FAILED",
-        res.functions, res.modules, res.instructions, res.seconds, ru.ru_maxrss / 1024, ok ? "" : ": ", ok ? "" : err.c_str());
+    LOG("[recomp] %s: %zu functions, %zu modules, %zu instructions in %.1f s, peak memory %ld MB; registers in locals: %zu "
+        "functions, %zu kept in the struct (%s)%s%s", ok ? "done" : "FAILED", res.functions, res.modules, res.instructions, res.seconds,
+        ru.ru_maxrss / 1024, res.localized, res.localFallback, recomp::code_switches().c_str(), ok ? "" : ": ", ok ? "" : err.c_str());
     return ok ? "" : err.empty() ? "failed" : err;
 }
 #endif
@@ -487,6 +490,11 @@ JNI_FN(void, setOption)(JNIEnv* env, jclass, jstring name, jint value) {
     else if (n == "tv_aspect") gfx::set_tv_aspect(value);
     // aspect ratio the game renders at (aspect.cpp): 0 = 16:9 (original), 1 = the screen's shape
     else if (n == "render_aspect") aspect::set_mode(value == 1 ? aspect::kWindow : aspect::kOriginal);
+    // frame interpolation (interp.cpp): 0 off, else the frame rate (60, 120)
+    else if (n == "interp_fps") {
+        if (value) interp::set_fps(value);
+        interp::set_mode(value ? 1 : 0);
+    }
     // gameplay mods (runtime/src/mods)
     else if (n == "mod_direct_camera") mods::set_direct_camera(value != 0);
     else if (n == "mod_camera_speed") mods::set_camera_speed(value / 100.0f);
@@ -510,6 +518,7 @@ JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
     if (n == "pro_controller") return input::pro_controller();
     if (n == "tv_aspect") return gfx::tv_aspect();
     if (n == "render_aspect") return aspect::mode() == aspect::kWindow ? 1 : 0;
+    if (n == "interp_fps") return interp::mode() == 1 ? interp::fps() : 0;
     if (n == "mod_direct_camera") return mods::direct_camera();
     if (n == "mod_camera_speed") return (int)lroundf(mods::camera_speed() * 100);
     if (n == "mod_first_person") return mods::first_person_wheel();

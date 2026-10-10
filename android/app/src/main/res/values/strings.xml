@@ -90,6 +90,7 @@
     <string name="fg_multiplier">Multiplier: ×%1$d (%2$d fps)</string>
     <string name="fg_multiplier_title">Frames per game frame</string>
     <string name="fg_multiplier_item">×%1$d (%2$d fps)</string>
+    <string name="fg_multiplier_item_over">×%1$d (%2$d fps: more than the display shows, no generated frames)</string>
     <string name="fg_mode">Network: %1$s</string>
     <string name="fg_performance">Performance</string>
     <string name="fg_quality">Quality (more GPU load)</string>
@@ -231,6 +232,18 @@
     <string name="opt_language">Game language</string>
     <string name="opt_language_hint">The languages of your copy of the game; applies after a restart</string>
     <string name="language_restart">The game uses the new language after a restart.</string>
+    <string name="opt_interp">Frame rate</string>
+    <string name="opt_interp_hint">Frame interpolation: in-between frames from the game\'s 30 fps. Needs a fast CPU; where a frame doesn\'t fit in time it is left out and the game keeps its speed</string>
+    <string name="interp_off">30 fps (original)</string>
+    <string name="interp_fps">%d fps (interpolated)</string>
+    <string name="opt_record_thread">Command recording thread</string>
+    <string name="opt_record_thread_hint">A second CPU thread prepares the GPU work: faster on most devices, slower on some (e.g. Snapdragon 855)</string>
+    <string-array name="record_thread_modes">
+        <item>Automatic</item>
+        <item>On</item>
+        <item>Off</item>
+    </string-array>
+    <string name="record_thread_restart">The setting applies after a restart.</string>
     <string name="opt_motion">Motion controls</string>
     <string name="opt_motion_hint">Aim by tilting the device, or a controller with motion sensors</string>
     <string name="opt_rumble">Rumble</string>
@@ -292,6 +305,7 @@
     <string name="crash_share">Share crash log</string>
     <string name="crash_share_all">Share crash logs</string>
     <string name="crash_not_now">Not now</string>
+    <string name="crash_start_game">Start game</string>
     <string name="crash_subject">Wind Waker HD crash log</string>
     <string name="opt_quit">Quit</string>
     <string name="menu_capture">Capture frame (debugging)</string>

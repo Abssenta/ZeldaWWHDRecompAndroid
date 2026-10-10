@@ -22,6 +22,7 @@
 #include "gx2/gx2.h"
 #include "lsfg.h"
 #include "platform.h"
+#include "interp.h"
 #include "runtime.h"
 #include "vk.h"
 #include "vk_window.h"
@@ -1139,6 +1140,30 @@ static bool no_60hz_request() {
     static const bool off = getenv("WWHD_NO_60HZ") != nullptr;
     return off;
 }
+// The display rate the window asks for, from the frames shown per second (30, or what frame
+// interpolation draws: interp::frames_per_step). Frame generation presents a steady multiple of it
+// (a 144 Hz panel can't space 60 or 120 fps evenly; 120 Hz can); without it at least 60 Hz, more for
+// interpolation at 120 fps. Checked every frame (the frame rate setting changes during play); Android
+// is asked only when it changes, or for a new window (force).
+static float g_rate_requested = -1.0f;
+static void request_display_rate(ANativeWindow* window, bool force) {
+    if (!window) return;
+    const int shown = 30 * interp::frames_per_step();
+    float rate;
+    int8_t compat = ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT;
+    if (fg::loaded()) {
+        rate = (float)(shown * fg::config().multiplier);
+        compat = ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_FIXED_SOURCE;
+    } else {
+        // without it the game flips at most 60 times a second (more with interpolation): let a 90/120 Hz
+        // panel drop to 60 Hz (from pull request #8 by SSunnKing, 62a723b); WWHD_NO_60HZ=1 leaves it alone
+        rate = no_60hz_request() ? 0.0f : (float)std::max(60, shown);
+    }
+    if (!force && rate == g_rate_requested) return;
+    g_rate_requested = rate;
+    ANativeWindow_setFrameRate(window, rate, compat);
+    LOG("[vk] display rate requested: %.0f Hz%s", rate, fg::loaded() ? " (frame generation)" : "");
+}
 
 // presents there); else the GamePad's own display
 bool ensure_swapchain(Swapchain& sc, bool main = true) {
@@ -1158,13 +1183,7 @@ bool ensure_swapchain(Swapchain& sc, bool main = true) {
         vkGetPhysicalDeviceSurfaceSupportKHR(R.pd, R.queueFamily, sc.surface, &ok);
         if (!ok) LOG("[vk] warning: queue family %u reports no present support", R.queueFamily);
     }
-    // frame generation presents at a steady multiple of the game's 30 fps: ask for a display mode
-    // that is a multiple of it (a 144 Hz panel can't space 60 or 120 fps evenly; 120 Hz can)
-    if (main && fg::loaded()) ANativeWindow_setFrameRate(sc.window, 30.0f * fg::config().multiplier,
-                                                 ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
-    // without it the game flips at most 60 times a second: let a 90/120 Hz panel drop to 60 Hz
-    // (from pull request #8 by SSunnKing, 62a723b); WWHD_NO_60HZ=1 leaves the panel's rate alone
-    else if (main && !no_60hz_request()) ANativeWindow_setFrameRate(sc.window, 60.0f, ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT);
+    if (main) request_display_rate(sc.window, true);
     VkSurfaceCapabilitiesKHR caps{};
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(R.pd, sc.surface, &caps);
     uint32_t n = 0;
@@ -1346,6 +1365,7 @@ bool present_frame() {
     std::lock_guard<std::mutex> wl(g_window_mutex);
     if (g_present_outdated.exchange(false, std::memory_order_acquire)) g_sc.stale = true;
     if (!ensure_swapchain(g_sc)) return false;
+    request_display_rate(g_sc.window, false);
     VkSemaphore acquire;
     if (!g_acquire_free.empty()) {
         acquire = g_acquire_free.back();
@@ -1774,8 +1794,7 @@ void apply_frame_generation() {
     if (r.on) fg::load(r.cfg);  // logs why if the DLL can't be used
     // present mode (FIFO with frame generation) and the display rate hint differ: new swapchain
     std::lock_guard<std::mutex> wl(g_window_mutex);
-    if (g_sc.window && !fg::loaded())
-        ANativeWindow_setFrameRate(g_sc.window, no_60hz_request() ? 0.0f : 60.0f, ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT);
+    request_display_rate(g_sc.window, true);
     g_sc.stale = true;
 }
 
@@ -1792,6 +1811,7 @@ bool present_frame_fg() {
         if (!g_sc.window) return false;
         w = (uint32_t)ANativeWindow_getWidth(g_sc.window);
         h = (uint32_t)ANativeWindow_getHeight(g_sc.window);
+        request_display_rate(g_sc.window, false);
     }
     if (!w || !h) return false;
     if (w != g_comp.img.width || h != g_comp.img.height) {
@@ -2295,6 +2315,7 @@ std::deque<VkFence> g_fw_pending;
 std::vector<VkFence> g_fw_free;
 
 void frame_waiter_thread() {
+    platform::set_thread_name("GX2 frame wait");
     for (;;) {
         VkFence f;
         {
@@ -2422,7 +2443,7 @@ void perf_stats(float out[7]) {
 void swap() {
     cache_warm_step();
     perf_frame();
-    platform::perf_hint_frame();
+    platform::perf_hint_frame(interp::frames_per_step());
     prof_frame();
     latch_resolution_scale();
     apply_frame_generation();

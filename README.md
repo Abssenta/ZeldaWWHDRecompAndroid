@@ -24,6 +24,11 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
   compiled code in about half a second. The work continues in the background with a progress
   notification, and resumes where it stopped if the app is closed.
 - **Frame generation** with Lossless Scaling's LSFG 3 (see below): 60, 90 or 120 fps.
+- **60 fps by frame interpolation** (the original project's, Graphics › Frame rate): the game draws
+  an extra frame between its 30 steps a second, without the Lossless.dll; 120 fps on screens with
+  120 Hz or more. It needs a fast phone (60 fps on a Snapdragon 7+ Gen 3); where a frame doesn't
+  fit in time it is left out, so the game always keeps its speed. Works together with frame
+  generation ×2.
 - **An in-game options menu** in the style of the game's own menus, with tabs for saves, the game,
   graphics, mods and controls, usable by touch and with a controller (see below).
 - **Save states**: five slots with a picture, time and place of each state, and the controls it was
@@ -64,9 +69,9 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
   still wait for your button.
 - **Performance work for weaker devices**: BC textures unpacked on the GPU where it can't sample
   them (most Mali and PowerVR GPUs), precise Vulkan barriers (on a Mali-G52 the GPU time per frame
-  drops from 52 to 40 ms), much less work on the render thread (on a Snapdragon 855 from 24 to 16 ms
-  a frame), with the Qualcomm driver a second thread for the Vulkan commands, Android performance
-  hints and game modes.
+  drops from 52 to 40 ms), much less work on the render thread, faster game code (the guest
+  registers kept in the CPU's own registers), a second thread for the Vulkan commands, the game and
+  render threads on the fast cores, Android performance hints and game modes.
 - **Crash logs**: if the game crashes, the next start offers its log in Android's share menu, for a
   bug report. It shows where the game crashed and with which app and game version, device and
   settings; it contains no personal data. About › Share crash logs shares the logs kept; a shared
@@ -77,6 +82,24 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
 - **No internet access**: the app doesn't request it, and its manifest explicitly excludes it.
 
 ## Version history
+
+**0.9**
+
+- 60 fps by frame interpolation, from the original project (Graphics › Frame rate: 30 fps, 60 fps,
+  and 120 fps on screens with 120 Hz or more). Where a frame doesn't fit in time it is left out, so
+  the game keeps its speed; it falls back to 30 fps only while the device can't keep up for a while.
+  Works together with frame generation ×2 (the multipliers now show the resulting frame rate).
+- Faster: the game code keeps the game's CPU registers in the device's own (the game thread needs
+  about 30% less time), and the render thread about 40% less. On phones without Android's
+  performance hints (e.g. Snapdragon 855, Helio G85) the game and render threads stay on the fast
+  cores.
+- The sound's two busiest loops run as native code (from the original project): about 30% less CPU
+  time for the game's audio thread.
+- Fixes: Grandma kept the shield after a quick scene change (issue #15); light flashes in Beetle's
+  shop with Turnip drivers (issue #16: the Vulkan commands are now recorded on a second thread with
+  every GPU driver, Graphics › Command recording thread to choose); crash logs are also offered when
+  the game crashes before it starts, and for exits the app's own handler can't catch (issue #25).
+- The game code is prepared again once after the update.
 
 **0.8**
 
@@ -166,7 +189,7 @@ None of these are included or provided here.
    folder.
 3. The app extracts the game files (a few seconds to minutes), then prepares the game code for
    your device (once; how long depends on the processor: about 6 minutes on a Snapdragon 7+ Gen 3,
-   7.5 minutes on a Snapdragon 855, 16 minutes on a Helio G85). You can leave the app meanwhile and read a Wind Waker walkthrough guide. A notification shows the progress and keeps the process alive.
+   9 minutes on a Snapdragon 855, 18 minutes on a Helio G85). You can leave the app meanwhile and read a Wind Waker walkthrough guide. A notification shows the progress and keeps the process alive.
 4. The game starts. The first visit to each place may stutter briefly while its shaders compile as usual.
    After that they are cached.
 
@@ -211,10 +234,12 @@ back.)
   back to that, since the game only listens to the controller it was saved with. Exporting and importing saves. An imported game
   save restarts the game.  
 - **Game**: the game language (the languages of your copy; applies after a restart).
-- **Graphics**: rendering resolution, frame generation, widescreen, aspect ratio, the GamePad screen (with a
+- **Graphics**: rendering resolution, frame rate (30 fps, or 60/120 fps by frame interpolation), frame generation, widescreen, aspect ratio, the GamePad screen (with a
   second display), screen layout, ambient
   occlusion, full-size occlusion depth, 16× anisotropic filtering, the performance overlay, the GPU
-  driver (Adreno only), and deleting the shader cache (restarts the game as on its first start).
+  driver (Adreno only), the command recording thread (a second CPU thread for the GPU work; on by
+  default, "Off" can be faster on some devices such as the Snapdragon 855; applies after a restart),
+  and deleting the shader cache (restarts the game as on its first start).
 - **Mods**: the gameplay mods, all off by default, and faster running and swimming (each 1.25× up
   to 4×: Link covers more ground while running or swimming; jumps, rolls, climbing and the boat
   stay as they are). Each applies always or with L3, set separately: one press switches it on and
@@ -229,7 +254,7 @@ About (with the licenses) and Quit are always on the left.
 ## Frame generation (Lossless Scaling)
 
 Frame generation adds frames between the game's 30 frames per second: ×2 = 60 fps, ×3 = 90 fps,
-×4 = 120 fps, on a screen with that refresh rate. It uses the frame generation network of
+×4 = 120 fps, on a screen with that refresh rate (with frame interpolation at 60 fps: ×2 = 120 fps). It uses the frame generation network of
 [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) (LSFG 3), which is
 not part of this app: it needs the usual **`Lossless.dll`** from a Lossless Scaling installation on
 Windows (in the program's folder in your Steam library).

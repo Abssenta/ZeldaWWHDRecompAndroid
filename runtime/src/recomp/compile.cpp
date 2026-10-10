@@ -12,6 +12,8 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/Transforms/IPO/AlwaysInliner.h>
+#include <llvm/Transforms/Scalar/InstSimplifyPass.h>
 
 #if defined(__aarch64__) && defined(__linux__)
 #include <sys/auxv.h>
@@ -25,6 +27,7 @@
 
 #include "../release.h"
 #include "emit.h"
+#include "locals.h"
 #include "program.h"
 
 namespace recomp {
@@ -89,7 +92,7 @@ bool compile_game(const CompileOptions& opt, CompileResult& res, std::string& er
         modules.emplace_back(prog.entries.begin() + i, prog.entries.begin() + std::min(prog.entries.size(), i + opt.perModule));
     llvm::sys::fs::create_directories(opt.outDir);
     if (opt.modulesTotal) *opt.modulesTotal = modules.size();
-    std::atomic<size_t> next{0}, instructions{0}, unhandled{0};
+    std::atomic<size_t> next{0}, instructions{0}, unhandled{0}, localized{0}, localFallback{0};
     std::atomic<bool> failed{false};
     std::mutex errm;
     auto fail = [&](const std::string& why) {
@@ -138,6 +141,16 @@ bool compile_game(const CompileOptions& opt, CompileResult& res, std::string& er
             pb.registerFunctionAnalyses(fam);
             pb.registerLoopAnalyses(lam);
             pb.crossRegisterProxies(lam, fam, cgam, mam);
+            {  // the ops inlined and their decoding folded first: the register copy's accesses are then known
+                llvm::ModulePassManager mpm;
+                mpm.addPass(llvm::AlwaysInlinerPass());
+                mpm.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::InstSimplifyPass()));
+                mpm.run(*m, mam);
+            }
+            LocalsStats ls;
+            localize_registers(*m, locals_options(), ls);
+            localized += ls.functions;
+            localFallback += ls.fallback;
             pb.buildPerModuleDefaultPipeline(opt.optLevel >= 3 ? llvm::OptimizationLevel::O3 : llvm::OptimizationLevel::O2).run(*m, mam);
             std::string path = opt.outDir + "/" + name + ".o", tmp = path + ".part";
             {
@@ -162,6 +175,8 @@ bool compile_game(const CompileOptions& opt, CompileResult& res, std::string& er
     res.modules = modules.size();
     res.instructions = instructions;
     res.unhandled = unhandled;
+    res.localized = localized;
+    res.localFallback = localFallback;
     res.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     return !failed;
 }

@@ -22,6 +22,7 @@
 // eye +0xDC, center +0xE8, up +0xF4, bank (s16) +0x100.
 #include <algorithm>
 #include <atomic>
+#include <bitset>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -704,14 +705,76 @@ constexpr auto kPacedStep = std::chrono::nanoseconds(33'333'333);
 constexpr auto kPacedBudget = std::chrono::nanoseconds(kPacedStep + std::chrono::milliseconds(2));
 // start of every pass: the last pass's own duration, and the wait before a logic pass that follows
 // a dropped in-between pass (and at 120/240 fps before every logic pass that comes early)
+// The decision after a logic pass sees the time so far, but not the rest of the pass: its frame still
+// waits for the render thread and the vsync. Where that rest is long (Mi 9: a logic pass decides at
+// 14 ms but shows at the second vsync, 33.4 ms) every in-between frame was drawn and a step took 50 ms
+// (40 fps, the game at 2/3 of its speed). So at 60 fps the steps that draw in-between frames are
+// timed (logic start to logic start): when more than two thirds of the last kWindow (2 s) run over the
+// budget, in-between frames are left out. Each switch between 60 and 30 fps shows as a stutter, more
+// than a late step does, so short heavy moments keep 60 fps (the user's choice on the tablet; faster
+// devices have no late steps anyway). A probe then draws them for kProbeSteps (1 s), judged by its second
+// half (at most half of it late): the clocks need that long to rise again after 30 fps (tablet: single
+// probe steps took 40-66 ms, steady 60 fps 33.3 ms), and the first steps are out of phase with the
+// vsync. A failed probe doubles the wait for the next (kProbeAfter up to kProbeMax).
+constexpr int kWindow = 60, kProbeSteps = 30;
+constexpr auto kProbeMax = std::chrono::seconds(80);
+static std::bitset<kWindow> g_overrun;  // the last steps with in-between frames: over the budget
+static int g_window_n = 0;              // steps in the window
+static bool g_step_drew = false, g_steps_fit = true;
+static int g_probe_left = 0;  // probe steps still to draw
+static pace_clock::time_point g_dropped_at{};
+static pace_clock::duration g_probe_wait = kProbeAfter;
+static bool steps_fit() {
+    if (in_between() > 1 || g_steps_fit || g_probe_left > 0) return true;
+    if (pace_clock::now() - g_dropped_at < g_probe_wait) return false;
+    g_probe_left = kProbeSteps;  // a probe
+    g_window_n = 0;
+    return true;
+}
+static int overruns(int last) {  // among the last `last` steps of the window
+    int n = 0;
+    for (int i = 0; i < std::min(last, g_window_n); i++) n += g_overrun[i];
+    return n;
+}
+// a step with in-between frames ended after `step`
+static void step_timed(pace_clock::duration step) {
+    g_overrun <<= 1;
+    g_overrun[0] = step > kPacedBudget;
+    g_window_n = std::min(g_window_n + 1, kWindow);
+    if (g_probe_left > 0) {
+        if (--g_probe_left > 0) return;
+        g_steps_fit = overruns(kProbeSteps / 2) <= kProbeSteps / 4;  // at most half of the second half
+        g_probe_wait = g_steps_fit ? pace_clock::duration(kProbeAfter) : std::min<pace_clock::duration>(2 * g_probe_wait, kProbeMax);
+    } else if (g_steps_fit && g_window_n == kWindow && overruns(kWindow) > kWindow * 2 / 3) {
+        g_steps_fit = false;
+    } else {
+        return;
+    }
+    if (!g_steps_fit) {
+        g_dropped_at = pace_clock::now();
+        g_window_n = 0;
+    }
+    LOG("[interp] paced: in-between frames %s (steps over %.1f ms: %d of the last %d)", g_steps_fit ? "fit" : "left out for now",
+        std::chrono::duration<double, std::milli>(kPacedBudget).count(), overruns(kWindow), g_window_n);
+}
+// debug: WWHD_PACE_TRACE=n logs the pacing of n passes every 1200 (durations, decisions, waits)
+static const int g_pace_trace_n = getenv("WWHD_PACE_TRACE") ? atoi(getenv("WWHD_PACE_TRACE")) : 0;
+static int g_pace_trace = 0;
+static double ms(pace_clock::duration d) { return std::chrono::duration<double, std::milli>(d).count(); }
 static void paced_pass_start() {
     static bool previousRecord = false;
     if (!paced() || !interp_on()) { g_exact_step = false; previousRecord = false; return; }
     if (!g_hold_next) g_exact_step = !previousRecord;  // this logic pass: blend only after a record pass
     previousRecord = g_hold_next && g_phase + 1 >= g_step_n;  // this pass is the step's record pass
     const auto now = pace_clock::now();
+    static unsigned tracePasses = 0;
+    if (g_pace_trace_n && ++tracePasses % 1200 == 0) g_pace_trace = g_pace_trace_n;
     if (g_last_entry != pace_clock::time_point{}) {
         const auto pass = now - g_last_entry - g_slept;
+        if (g_pace_trace > 0) {
+            g_pace_trace--;
+            LOG("[pace] %s pass took %.1f ms; next: %s", g_pass_was_hold ? "hold" : "logic", ms(pass), g_hold_next ? "hold" : "logic");
+        }
         pace_clock::duration& avg = g_pass_was_hold ? g_hold_avg : g_logic_avg;
         // a probe after a long pause replaces the old value: the scene may have changed since
         avg = g_pass_was_hold && g_probe ? pass : pace_clock::duration(pacing::update_average(avg.count(), pass.count()));
@@ -721,10 +784,19 @@ static void paced_pass_start() {
     g_last_entry = now;
     g_slept = {};
     if (g_hold_next) return;
+    // the step that just ended, if it drew in-between frames: logic start to logic start
+    if (g_step_drew && g_last_logic != pace_clock::time_point{}) {
+        const auto step = now - g_last_logic;
+        if (g_pace_trace > 0) LOG("[pace] step with in-between frames took %.1f ms (probe steps left %d)", ms(step), g_probe_left);
+        if (in_between() == 1) step_timed(step);
+    }
+    g_step_drew = false;
     if (g_wait_step && now < g_last_logic + kPacedStep) {
         threads::park_sleep_until(g_last_logic + kPacedStep);  // the game keeps 30 steps a second
         g_slept = pace_clock::now() - now;
     }
+    if (g_pace_trace > 0)
+        LOG("[pace] logic pass starts %.1f ms after the last one (slept %.1f)", ms(pace_clock::now() - g_last_logic), ms(g_slept));
     g_wait_step = false;
     g_last_logic = pace_clock::now();
 }
@@ -772,7 +844,10 @@ static void paced_step_done(int holds) {
 // the in-between pass is drawn when it fits, otherwise dropped.
 static void after_pass(int phase) {
     const bool pacing = paced() && interp_on();
-    if (phase > 0) g_step_holds++;
+    if (phase > 0) {
+        g_step_holds++;
+        g_step_drew = true;
+    }
     if (phase >= g_step_n) {  // the record pass ended the step
         g_hold_next = false;
         if (pacing) {
@@ -788,8 +863,15 @@ static void after_pass(int phase) {
     // After a long time without in-between passes their cost is stale (the scene may be lighter
     // now): one probe, if one vsync tick fits; its duration replaces the estimate.
     const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
-    const auto pass = std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count();
-    switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
+    // At 60 fps an in-between pass that fits takes one vsync tick; one that runs over is what the step
+    // timing (steps_fit) catches. Its average estimate instead stayed high after a few late passes
+    // (27-29 ms on the tablet while moving), and as no in-between frame fit any more it was never
+    // measured again: 30 fps for good.
+    const auto pass = std::chrono::duration_cast<std::chrono::nanoseconds>(probe || in_between() == 1 ? vsync_tick() : g_hold_avg).count();
+    if (g_pace_trace > 0)
+        LOG("[pace] end of %s pass: %.1f ms since the logic start, hold estimate %.1f ms, steps fit %d -> %s", phase ? "hold" : "logic",
+            elapsed / 1e6, pass / 1e6, (int)g_steps_fit, !steps_fit() || pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count()) == pacing::Next::kDrop ? "drop" : "draw");
+    switch (!steps_fit() ? pacing::Next::kDrop : pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
     case pacing::Next::kHold:
         g_hold_next = true;
         g_probe = probe;

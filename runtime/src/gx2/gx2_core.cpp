@@ -121,6 +121,7 @@ static uint64_t g_fence_issued = 0, g_fence_done = 0;
 static void render_thread_main() {
     platform::set_thread_name("GX2 render");
     platform::set_thread_high_priority();
+    platform::prefer_big_cores(false);
     for (;;) {
         {
             std::unique_lock<std::mutex> lk(g_q_mutex);
@@ -137,10 +138,32 @@ static void render_thread_main() {
     }
 }
 
+// Commands queued since the last completed render_sync that may read guest memory the game can
+// rewrite once GX2DrawDone returns (draws, display lists, copies, clears...). The game ends its frame
+// with GX2DrawDone, copy to the scan buffers and swap, then GX2DrawDone again: that second wait only
+// waited for the render thread to present (0.5 ms, up to 12 ms at 60 fps on the tablet), with nothing
+// of the game's left to protect. GX2DrawDone now waits only when such a command is pending.
+// WWHD_LAZY_DRAWDONE=0: always (as before).
+static bool g_pending_reads = true;  // (under g_q_mutex)
+static uint32 g_pending_ops = 0;     // debug (WWHD_TRACE_DRAWDONE): bit per op that set it
+static bool reads_guest(Op op) {
+    switch (op) {
+    case OP_NOP: case OP_SET_REGS: case OP_COPY_TO_SCAN: case OP_SET_CONTEXT: case OP_SET_PROJ_REGS: case OP_FLUSH:
+    case OP_DRAW_DONE: case OP_SWAP: case OP_SETUP_CONTEXT: case OP_FENCE:
+    case OP_INVALIDATE:  // marks surfaces for a check at their next use (a draw, behind a later wait)
+        return false;  // their payload carries what they need (or host state only)
+    default:
+        return true;
+    }
+}
 static void enqueue(Op op, const uint32* payload, uint32 n) {
     static std::once_flag once;
     std::call_once(once, [] { std::thread(render_thread_main).detach(); });
     std::lock_guard<std::mutex> lk(g_q_mutex);
+    if (reads_guest(op)) {
+        g_pending_reads = true;
+        g_pending_ops |= 1u << (op & 31);
+    }
     g_q_pending.push_back(op | (n << 8));
     g_q_pending.insert(g_q_pending.end(), payload, payload + n);
     if (g_q_waiting) g_q_cv.notify_one();
@@ -153,6 +176,7 @@ static void render_sync() {
     {
         std::lock_guard<std::mutex> lk(g_q_mutex);
         id = ++g_fence_issued;
+        g_pending_reads = false;  // everything queued so far is done once the fence is
     }
     uint32 w = (uint32)id;
     enqueue(OP_FENCE, &w, 1);
@@ -216,6 +240,11 @@ void execute(const uint32* words, uint32 count) {
     }
 }
 
+// The context whose registers g_regs holds since set_context loaded it: register writes go to both
+// (apply_regs), so setting it again changes nothing. Skipping that saved the copy of every used
+// register block and, as no shader-relevant register changes, the shader key lookups after it
+// (~3% of the render thread at 60 fps). Unknown again after a new context or a loaded save state.
+static const uint32* g_loaded_context = nullptr;
 static void set_context(uint32 ctx) {
     if (g_gen_stats) g_gen_ctx_calls++;
     if (!ctx) {
@@ -227,10 +256,12 @@ static void set_context(uint32 ctx) {
         g_shadow = nullptr;
         return;
     }
+    if (g_shadow == it->second.data() && g_loaded_context == g_shadow) return;
     g_shadow = it->second.data();
     static const bool init = (touch_regs(REGADDR::VGT_PRIMITIVE_TYPE, 1), true);  // gfx::draw writes it
     (void)init;
     for (uint16_t b : g_reg_blocks) memcpy(&g_regs[b * kRegBlock], &g_shadow[b * kRegBlock], kRegBlock * 4);
+    g_loaded_context = g_shadow;
     g_shader_state_gen++;
     g_draw_state_gen++;
     if (g_gen_stats) g_gen_ctx++;
@@ -312,6 +343,7 @@ static void execute_one(Op op, const uint32* p, uint32 n) {
     case OP_SETUP_CONTEXT:
         g_contexts[p[0]].assign(kNumRegs, 0);
         g_shadow = g_contexts[p[0]].data();
+        g_loaded_context = nullptr;
         break;
     case OP_FENCE: {
         std::lock_guard<std::mutex> lk(g_q_mutex);
@@ -579,7 +611,32 @@ HLE(gx2, GX2DrawDone) {
     BlockingScope b;
     auto t0 = std::chrono::steady_clock::now();
     emit_host(OP_DRAW_DONE, {});
-    render_sync();
+    static const bool lazy = !getenv("WWHD_LAZY_DRAWDONE") || atoi(getenv("WWHD_LAZY_DRAWDONE")) != 0;
+    bool wait = true;
+    uint32 dbgOps = 0;
+    if (lazy && g_render_thread) {
+        std::lock_guard<std::mutex> lk(g_q_mutex);
+        wait = g_pending_reads;
+        dbgOps = g_pending_ops;
+        g_pending_ops = 0;
+    }
+    if (wait) render_sync();
+    // debug: WWHD_TRACE_DRAWDONE=n logs the guest call chain and the wait of n calls every 600
+    static const int trace = getenv("WWHD_TRACE_DRAWDONE") ? atoi(getenv("WWHD_TRACE_DRAWDONE")) : 0;
+    static uint64_t calls = 0;
+    if (trace && calls++ % 600 < (uint64_t)trace) {
+        char buf[256];
+        int n = snprintf(buf, sizeof buf, "[gx2] DrawDone %s %.2f ms (ops %X), from lr=%08X", wait ? "waited" : "no wait",
+                         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), dbgOps, c->lr);
+        uint32_t sp = c->r[1];
+        for (int i = 0; i < 8 && sp; i++) {
+            uint32_t prev = ld32(sp);
+            if (!prev || prev <= sp) break;
+            n += snprintf(buf + n, sizeof buf - n, " <- %08X", ld32(prev + 4));
+            sp = prev;
+        }
+        LOG("%s", buf);
+    }
     g_drawdone_calls++;
     g_drawdone_us += (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
     ret(c, 1);
@@ -755,6 +812,7 @@ void gx2_ss_load(ss::Reader& r) {
     uint32 active = r.u32();
     auto it = g_contexts.find(active);
     g_shadow = active && it != g_contexts.end() ? it->second.data() : nullptr;
+    g_loaded_context = nullptr;
     g_shader_state_gen++;
     g_draw_state_gen++;
     g_swap_interval = std::max<uint32>(r.u32(), 1);

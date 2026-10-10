@@ -218,8 +218,12 @@ final class OptionsMenu extends Dialog {
         String err = Native.frameGenError();
         if (a.prefs.getBoolean("fg_enabled", false) && !err.isEmpty()) note(a.getString(R.string.fg_error, err));
         toggle(R.string.opt_framegen, 0, a.prefs.getBoolean("fg_enabled", false), on -> a.setFrameGen("fg_enabled", on));
+        // the rate frame generation reaches: frames shown without it (30, or interpolated) times the
+        // multiplier; above the display's refresh rate it generates nothing (the renderer checks)
         String[] mult = new String[3];
-        for (int m = 2; m <= 4; m++) mult[m - 2] = a.getString(R.string.fg_multiplier_item, m, 30 * m);
+        int base = a.shownFps(), maxHz = a.maxRefreshHz();
+        for (int m = 2; m <= 4; m++)
+            mult[m - 2] = a.getString(base * m > maxHz * 1.1 ? R.string.fg_multiplier_item_over : R.string.fg_multiplier_item, m, base * m);
         choice(R.string.opt_fg_multiplier, R.string.opt_fg_multiplier_hint, mult, a.prefs.getInt("fg_multiplier", 2) - 2,
                 i -> a.setFrameGenMultiplier(i + 2));
         String[] modes = {a.getString(R.string.fg_performance), a.getString(R.string.fg_quality)};
@@ -440,6 +444,14 @@ final class OptionsMenu extends Dialog {
         String[] res = new String[MainActivity.RES_SCALES.length];
         for (int i = 0; i < res.length; i++) res[i] = a.resolutionLabel(MainActivity.RES_SCALES[i]);
         choice(R.string.opt_resolution, 0, res, indexOf(MainActivity.RES_SCALES, a.prefs.getString("res_scale", "1"), 2), a::setResolution);
+        int[] rates = a.interpRates();
+        String[] rateNames = new String[rates.length];
+        int rate = 0;
+        for (int i = 0; i < rates.length; i++) {
+            rateNames[i] = rates[i] == 0 ? a.getString(R.string.interp_off) : a.getString(R.string.interp_fps, rates[i]);
+            if (rates[i] == Native.getOption("interp_fps")) rate = i;
+        }
+        choice(R.string.opt_interp, R.string.opt_interp_hint, rateNames, rate, i -> a.setInterpFps(rates[i]));
         submenu(R.string.opt_framegen, 0, a.frameGenLabel(), () -> openPage(this::frameGenPage));
         choice(R.string.opt_render_aspect, R.string.opt_render_aspect_hint, a.getResources().getStringArray(R.array.render_aspect_modes),
                a.prefs.getInt("render_aspect", 0), i -> {
@@ -470,6 +482,8 @@ final class OptionsMenu extends Dialog {
                 () -> openPage(this::perfPage));
         if (GpuDrivers.supported())
             submenu(R.string.opt_gpu_driver, R.string.opt_gpu_driver_hint, a.gpuDriverLabel(), () -> openPage(this::gpuDriverPage));
+        choice(R.string.opt_record_thread, R.string.opt_record_thread_hint, a.getResources().getStringArray(R.array.record_thread_modes),
+                a.prefs.getInt("record_thread", 0), a::setRecordThread);
         submenu(R.string.opt_shaders, R.string.opt_shaders_hint, "", a::askClearShaders);
         if (a.debuggable())  // a debugging aid: debug builds only
             submenu(R.string.opt_capture, R.string.opt_capture_hint, "", () -> Native.setOption("capture", 1));
