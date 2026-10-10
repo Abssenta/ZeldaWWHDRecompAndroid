@@ -75,6 +75,18 @@ void touch_state_step();
 // has the Wind Waker, shield id} (ids 0xFF: none; all 0 when not in a game: title screen, file select)
 void touch_state(int32_t out[12]);
 
+// ---- cheats (cheats.cpp): one-shot save data edits, applied at the top of the next frame ----
+enum Cheat {
+    kCheatItems = 1, kCheatSword = 2, kCheatStats = 4,
+    // story progress (can change or break story events)
+    kCheatSongs = 8, kCheatTriforce = 16, kCheatDungeon = 32, kCheatKey = 64,
+};
+void request_cheat(int which);  // any thread
+enum Infinite { kInfHealth = 1, kInfMagic = 2, kInfAmmo = 4 };
+bool infinite(int which);
+void set_infinite(int which, bool on);
+void cheats_service();          // game main thread, frame start (interp.cpp)
+
 // shared helpers (mods.cpp)
 uint64_t step();    // full logic steps so far (interp::logic_steps)
 double game_time(); // seconds of game time (steps / 30)

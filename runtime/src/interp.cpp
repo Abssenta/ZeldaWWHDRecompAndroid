@@ -939,6 +939,7 @@ extern "C" void hook_0203593C(Cpu* c) {
     using namespace interp;
     fx_pass_start();
     ss::service(c);  // save states: exact values are back in guest memory, all other threads idle
+    mods::cheats_service();
     g_passes++;
     // test aid: WWHD_INTERP_AT_STEP=n switches interpolation on after n frames
     static uint64_t passes = 0;
