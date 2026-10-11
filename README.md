@@ -83,6 +83,20 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
 
 ## Version history
 
+**0.9.1**
+
+- Cheats, from the original project (Mods › Cheats): all items, Master Sword and Mirror Shield,
+  hearts, magic and rupees, infinite health, magic, arrows and bombs, and story cheats (songs,
+  Triforce shards, dungeon map, compass, boss key and small keys).
+- After the GPU hung (the game closed with a driver error), the next start names the driver and
+  offers another one: a Turnip driver after the system driver, or back to the system driver after
+  a driver package (issue #25).
+- A loading screen with progress while the shader cache is loaded at start, instead of a black
+  screen.
+- Fix: a restart after a settings change or "Delete shader cache" was taken for a crash, and the
+  next start offered a crash log.
+- No new preparation of the game code after the update.
+
 **0.9**
 
 - 60 fps by frame interpolation, from the original project (Graphics › Frame rate: 30 fps, 60 fps,
@@ -244,7 +258,10 @@ back.)
   to 4×: Link covers more ground while running or swimming; jumps, rolls, climbing and the boat
   stay as they are). Each applies always or with L3, set separately: one press switches it on and
   the next off (a press switches the one for what Link is doing, swimming or not), or only while L3
-  is held. Fast forward of cutscenes and of dialogues: faster while ZR is held.
+  is held. Fast forward of cutscenes and of dialogues: faster while ZR is held. **Cheats** (from the
+  original project) change the save file you play: items, hearts, magic, rupees, infinite health,
+  magic and ammunition, and story cheats (save to a spare file first; they can change story
+  events).
 - **Controls**: on-screen controls on or off, their size, whether the controls act as a Wii U
   GamePad or a Pro Controller, motion controls (gyro aiming), rumble, and which controller button
   presses which Wii U button.
@@ -300,7 +317,8 @@ speed for this game: try a few, and compare with the performance overlay.
 On some older Snapdragon phones the system driver makes the GPU hang after a few seconds to minutes
 of play and the game closes (seen on a Snapdragon 855 / Adreno 640 with a Qualcomm driver from
 2021). A Turnip driver runs the game there without these crashes, so if the game keeps closing on
-such a device, install one.
+such a device, install one. After such a hang the next start names the driver that hung and offers
+another one before the game starts.
 
 ## Building
 

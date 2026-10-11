@@ -534,6 +534,34 @@ final class OptionsMenu extends Dialog {
         }
         moveSpeed("mod_run", R.string.opt_mod_run, R.string.opt_mod_run_hint, runs, curRun);
         moveSpeed("mod_swim", R.string.opt_mod_swim, R.string.opt_mod_swim_hint, runs, curSwim);
+        submenu(R.string.opt_cheats, R.string.opt_cheats_hint, "", () -> openPage(this::cheatsPage));
+    }
+
+    // cheats (mods/cheats.cpp, from the original project): edits of the save file in play; one-shot
+    // ones by a tap, the infinite ones as switches (kept as settings); story cheats ask first
+    private void cheatsPage() {
+        pageTitle(R.string.opt_cheats);
+        note(a.getString(R.string.cheats_about));
+        submenu(R.string.cheat_items, R.string.cheat_items_hint, "", () -> a.cheat(MainActivity.CHEAT_ITEMS, R.string.cheat_items_done));
+        submenu(R.string.cheat_sword, R.string.cheat_sword_hint, "", () -> a.cheat(MainActivity.CHEAT_SWORD, R.string.cheat_sword_done));
+        submenu(R.string.cheat_stats, R.string.cheat_stats_hint, "", () -> a.cheat(MainActivity.CHEAT_STATS, R.string.cheat_stats_done));
+        int[] inf = {R.string.cheat_inf_health, R.string.cheat_inf_magic, R.string.cheat_inf_ammo};
+        for (int i = 0; i < inf.length; i++) {
+            String key = MainActivity.CHEATS_INFINITE[i];
+            toggle(inf[i], 0, a.prefs.getBoolean(key, false), on -> {
+                a.prefs.edit().putBoolean(key, on).apply();
+                Native.setOption(key, on ? 1 : 0);
+            });
+        }
+        note(a.getString(R.string.cheats_story_about));
+        int[][] story = {{R.string.cheat_songs, MainActivity.CHEAT_SONGS, R.string.cheat_songs_done},
+                         {R.string.cheat_triforce, MainActivity.CHEAT_TRIFORCE, R.string.cheat_triforce_done},
+                         {R.string.cheat_dungeon, MainActivity.CHEAT_DUNGEON, R.string.cheat_dungeon_done},
+                         {R.string.cheat_key, MainActivity.CHEAT_KEY, R.string.cheat_key_done}};
+        for (int[] c : story)
+            submenu(c[0], 0, "", () -> new GameDialog(getContext()).title(c[0]).message(R.string.cheats_story_confirm)
+                    .button(R.string.opt_cancel, null)
+                    .button(R.string.cheat_apply, () -> a.cheat(c[1], c[2])).show());
     }
 
     // faster running or swimming: its speed, and below it (when on) when it applies and how L3 works

@@ -260,6 +260,11 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
             CrashLogs.recordExit(this, prefs);
             if (CrashLogs.offerNew(this, prefs, this::checkAndStart)) return;
         }
+        // the GPU driver lost the device last time (it hung): offer another driver before the game starts
+        if (!gpuLostOffered) {
+            gpuLostOffered = true;
+            if (offerGpuDriverAfterLoss(this::checkAndStart)) return;
+        }
         File base = baseDir();
         // testing: WWHD_CLEAR_SHADERS=1 (an intent extra) starts as with "Delete shader cache"
         if (Os.getenv("WWHD_CLEAR_SHADERS") != null) Backup.deleteTree(new File(getNoBackupFilesDir(), "shadercache"));
@@ -270,6 +275,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         applyOptions();
         startMotion();
         showGame();
+        showCacheLoading();
         updateDrcDisplay();
         if (failedDriver != null)
             new GameDialog(this).title(R.string.opt_gpu_driver).message(getString(R.string.gpu_driver_failed, failedDriver))
@@ -277,6 +283,60 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private boolean crashOffered;  // once per process: the offer before the game starts
+    private boolean gpuLostOffered;
+
+    // `gpu_lost` (vk_device.cpp, vk_note_device_lost): the GPU driver hung or crashed in the last run.
+    // Old Qualcomm drivers (v502 on Snapdragon 855/865) do that with this game; a Turnip driver
+    // runs it (issue #25). On Adreno GPUs: a driver file can be chosen right away, or the game
+    // starts as it is. `then` continues the start (also after the picker, unless the new driver
+    // restarts the app).
+    private boolean offerGpuDriverAfterLoss(Runnable then) {
+        File note = new File(baseDir(), "gpu_lost");
+        if (!note.exists()) return false;
+        // the note: GPU, the driver that ran (as Vulkan names it), the installed driver package's
+        // folder if one was loaded (empty: the system driver)
+        String driver = "", packageDir = "";
+        try (BufferedReader r = new BufferedReader(new FileReader(note))) {
+            r.readLine();  // GPU
+            String d = r.readLine();
+            if (d != null) driver = d.trim();
+            String p = r.readLine();
+            if (p != null) packageDir = p.trim();
+        } catch (IOException ignored) {
+        }
+        //noinspection ResultOfMethodCallIgnored
+        note.delete();
+        if (!GpuDrivers.supported()) return false;
+        if (driver.isEmpty()) driver = getString(R.string.gpu_lost_unknown_driver);
+        GameDialog d = new GameDialog(this).title(R.string.gpu_lost_title).cancelable(false);
+        if (packageDir.isEmpty()) {  // the system driver hung
+            d.message(getString(R.string.gpu_lost_system, driver))
+                    .button(R.string.gpu_lost_start, then)
+                    .button(R.string.gpu_lost_choose, () -> pickDriverThen(then));
+        } else {  // an installed driver hung: going back to the system driver comes first
+            d.message(getString(R.string.gpu_lost_custom, driver))
+                    .button(R.string.gpu_lost_start, then)
+                    .button(R.string.gpu_lost_choose_other, () -> pickDriverThen(then))
+                    .button(R.string.gpu_lost_system_driver, () -> {
+                        prefs.edit().putString("gpu_driver", "").commit();
+                        then.run();
+                    });
+        }
+        d.show();
+        return true;
+    }
+
+    // the driver picker, and `then` once it is done without a restart (cancelled, failed, "Later")
+    private Runnable afterDriverPick;
+    private void pickDriverThen(Runnable then) {
+        afterDriverPick = then;
+        pickDriver();
+    }
+    private void driverPickDone() {
+        Runnable r = afterDriverPick;
+        afterDriverPick = null;
+        if (r != null) r.run();
+    }
 
     // ------------------------------------------------------------------ GPU driver (Adreno)
     // A driver package the user installed (GpuDrivers), used instead of the system driver from the
@@ -361,13 +421,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         withProgress(R.string.gpu_driver_installing, () -> GpuDrivers.install(this, uri), res -> {
             if (res.startsWith("!")) {
                 new GameDialog(this).title(R.string.opt_gpu_driver).message(getString(R.string.gpu_driver_install_failed, res.substring(1)))
-                        .button(R.string.opt_ok, null).show();
+                        .button(R.string.opt_ok, this::driverPickDone).show();
                 return;
             }
             GpuDrivers.Driver d = GpuDrivers.find(this, res);
             String name = d != null ? d.name + (d.version.isEmpty() ? "" : " (" + d.version + ")") : res;
             new GameDialog(this).title(R.string.opt_gpu_driver).message(getString(R.string.gpu_driver_installed, name))
-                    .button(R.string.gpu_driver_later, null)
+                    .button(R.string.gpu_driver_later, this::driverPickDone)
                     .button(R.string.gpu_driver_use_now, () -> {
                         prefs.edit().putString("gpu_driver", res).commit();
                         restartApp();
@@ -470,6 +530,54 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         hideSystemBars();
     }
 
+    // The shader cache's replay before the first frame (Native.cacheProgress; seconds with a large
+    // cache): the sea card with its progress over the game picture instead of a black screen. Shown
+    // only when there is a cache file and 300 ms have passed; gone once the replay is done.
+    private void showCacheLoading() {
+        if (surface == null || !(surface.getParent() instanceof FrameLayout)) return;
+        FrameLayout root = (FrameLayout) surface.getParent();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+        TextView t = new TextView(this);
+        t.setTextSize(16);
+        t.setText(R.string.cache_loading);
+        box.addView(t);
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(1000);
+        box.addView(bar);
+        TextView detail = new TextView(this);
+        box.addView(detail);
+        View screen = seaScreen(box);
+        final SeaView mySea = sea;
+        sea = null;  // the game's screen: no work screen of its own
+        screen.setVisibility(View.GONE);
+        root.addView(screen, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        final long t0 = android.os.SystemClock.uptimeMillis();
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        h.post(new Runnable() {
+            @Override
+            public void run() {
+                long[] p = Native.cacheProgress();
+                if (p[0] == 2 || screen.getParent() != root) {  // done, or the game's screen was replaced
+                    root.removeView(screen);
+                    return;
+                }
+                // only while a cache file is replayed (state 1 with a size), not while the game boots
+                if (screen.getVisibility() != View.VISIBLE && p[0] == 1 && p[2] > 0
+                        && android.os.SystemClock.uptimeMillis() - t0 > 300)
+                    screen.setVisibility(View.VISIBLE);
+                if (p[2] > 0) {
+                    bar.setProgress((int) Math.min(1000, p[1] * 1000 / p[2]));
+                    mySea.setProgress(Math.min(1f, (float) p[1] / p[2]));
+                }
+                detail.setText(getString(R.string.cache_loading_detail, (int) p[3]));
+                h.postDelayed(this, 150);
+            }
+        });
+    }
+
     private void hideSystemBars() {
         WindowInsetsController c = getWindow().getInsetsController();
         if (c == null) return;
@@ -485,6 +593,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         Native.setOption("tv_aspect", prefs.getInt("tv_aspect", 0));
         Native.setOption("render_aspect", prefs.getInt("render_aspect", 0));
         for (String m : MODS) Native.setOption(m, prefs.getBoolean(m, false) ? 1 : 0);
+        for (String c : CHEATS_INFINITE) Native.setOption(c, prefs.getBoolean(c, false) ? 1 : 0);
         Native.setOption("mod_camera_speed", prefs.getInt("mod_camera_speed", 100));
         Native.setOption("mod_run_speed", prefs.getInt("mod_run_speed", 100));
         Native.setOption("mod_swim_speed", prefs.getInt("mod_swim_speed", 100));
@@ -1031,6 +1140,16 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
 
     // ------------------------------------------------------------------ gameplay mods
     // optional changes to how the game plays (runtime/src/mods), all off by default
+    // cheats (mods/cheats.cpp): the one-shot ones' bits (mods.h Cheat) and the switches kept as settings
+    static final int CHEAT_ITEMS = 1, CHEAT_SWORD = 2, CHEAT_STATS = 4, CHEAT_SONGS = 8, CHEAT_TRIFORCE = 16, CHEAT_DUNGEON = 32,
+                     CHEAT_KEY = 64;
+    static final String[] CHEATS_INFINITE = {"cheat_inf_health", "cheat_inf_magic", "cheat_inf_ammo"};
+
+    void cheat(int bit, int done) {
+        Native.setOption("cheat", bit);
+        android.widget.Toast.makeText(this, getString(done) + " " + getString(R.string.cheat_keep), android.widget.Toast.LENGTH_LONG).show();
+    }
+
     static final String[] MODS = {"mod_direct_camera", "mod_first_person", "mod_climb", "mod_quick_doors", "mod_fast_scenes",
                                   "mod_ff_cutscenes", "mod_ff_dialogues"};
     static final int[] CAMERA_SPEEDS = {50, 100, 150, 200};
@@ -1508,8 +1627,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request == PICK_DRIVER && result == RESULT_OK && data != null && data.getData() != null) {
-            installDriver(data.getData());
+        if (request == PICK_DRIVER) {
+            if (result == RESULT_OK && data != null && data.getData() != null) installDriver(data.getData());
+            else driverPickDone();  // cancelled: continue (the start after a GPU hang)
             return;
         }
         if (request == PICK_DISC && result == RESULT_OK && data != null && data.getData() != null) {

@@ -226,6 +226,14 @@ JNI_FN(jstring, gpuDriverInfo)(JNIEnv* env, jclass) { return env->NewStringUTF(g
 // the GPU's name as Vulkan reports it ("" until the renderer has started)
 JNI_FN(jstring, gpuName)(JNIEnv* env, jclass) { return env->NewStringUTF(gfx::gpu_name()); }
 JNI_FN(jboolean, gpuDriverFellBack)(JNIEnv*, jclass) { return gfx::driver_fallback(); }
+JNI_FN(jlongArray, cacheProgress)(JNIEnv* env, jclass) {
+    uint64_t p[4];
+    gfx::cache_progress(p);
+    jlongArray a = env->NewLongArray(4);
+    jlong v[4] = {(jlong)p[0], (jlong)p[1], (jlong)p[2], (jlong)p[3]};
+    env->SetLongArrayRegion(a, 0, 4, v);
+    return a;
+}
 
 // ---- extracting the game from the user's disc image (runtime/src/disc), on a Java thread
 static std::atomic<uint64_t> g_extract_done{0}, g_extract_total{0};
@@ -508,6 +516,11 @@ JNI_FN(void, setOption)(JNIEnv* env, jclass, jstring name, jint value) {
     else if (n == "mod_run_mode") mods::set_run_mode(value);
     else if (n == "mod_swim_mode") mods::set_swim_mode(value);
     else if (n == "mod_swim_speed") mods::set_swim_speed(value / 100.0f);
+    // cheats (mods/cheats.cpp): a one-shot cheat's bit, applied once a save file is loaded
+    else if (n == "cheat") mods::request_cheat(value);
+    else if (n == "cheat_inf_health") mods::set_infinite(mods::kInfHealth, value != 0);
+    else if (n == "cheat_inf_magic") mods::set_infinite(mods::kInfMagic, value != 0);
+    else if (n == "cheat_inf_ammo") mods::set_infinite(mods::kInfAmmo, value != 0);
 }
 
 JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
@@ -531,6 +544,9 @@ JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
     if (n == "mod_run_mode") return mods::run_mode();
     if (n == "mod_swim_mode") return mods::swim_mode();
     if (n == "mod_swim_speed") return (int)lroundf(mods::swim_speed() * 100);
+    if (n == "cheat_inf_health") return mods::infinite(mods::kInfHealth);
+    if (n == "cheat_inf_magic") return mods::infinite(mods::kInfMagic);
+    if (n == "cheat_inf_ammo") return mods::infinite(mods::kInfAmmo);
     return 0;
 }
 
