@@ -92,6 +92,8 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
 - Three more errors the Vulkan validation layer found, fixed: a texture read in the wrong state
   after a copy, smooth filtering of a depth format the GPU can't filter, and two threads using the
   screen's image queue at the same time.
+- Save states need much less extra memory while saving and loading: making one could close the game
+  on phones with 6 GB.
 - Rumble on the phone itself when the connected controller has none.
 - Crash logs show more of the game's state at the crash.
 - No new preparation of the game code after the update.
