@@ -25,6 +25,7 @@
 #include <bitset>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -940,6 +941,9 @@ extern "C" void hook_0203593C(Cpu* c) {
     fx_pass_start();
     ss::service(c);  // save states: exact values are back in guest memory, all other threads idle
     mods::cheats_service();
+    // debug: WWHD_CRASH_TEST=n crashes the game thread after n steps (to check the crash log)
+    static long crashTest = getenv("WWHD_CRASH_TEST") ? atol(getenv("WWHD_CRASH_TEST")) : 0;
+    if (crashTest > 0 && --crashTest == 0) raise(SIGSEGV);
     g_passes++;
     // test aid: WWHD_INTERP_AT_STEP=n switches interpolation on after n frames
     static uint64_t passes = 0;

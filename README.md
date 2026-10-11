@@ -83,6 +83,19 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
 
 ## Version history
 
+**0.9.2**
+
+- Fix for the GPU hangs with Qualcomm's older system drivers (issue #25: Snapdragon 855/865/870
+  with driver v502). The driver sometimes built broken GPU programs when several were prepared at
+  the same time; on such drivers they are now prepared one at a time. On a Snapdragon 855 the game
+  had closed in about every second start; in the tests afterwards it didn't any more.
+- Three more errors the Vulkan validation layer found, fixed: a texture read in the wrong state
+  after a copy, smooth filtering of a depth format the GPU can't filter, and two threads using the
+  screen's image queue at the same time.
+- Rumble on the phone itself when the connected controller has none.
+- Crash logs show more of the game's state at the crash.
+- No new preparation of the game code after the update.
+
 **0.9.1**
 
 - Cheats, from the original project (Mods › Cheats): all items, Master Sword and Mirror Shield,
@@ -263,7 +276,8 @@ back.)
   magic and ammunition, and story cheats (save to a spare file first; they can change story
   events).
 - **Controls**: on-screen controls on or off, their size, whether the controls act as a Wii U
-  GamePad or a Pro Controller, motion controls (gyro aiming), rumble, and which controller button
+  GamePad or a Pro Controller, motion controls (gyro aiming), rumble (on the phone when the
+  controller has none), and which controller button
   presses which Wii U button.
 
 About (with the licenses) and Quit are always on the left.
@@ -314,11 +328,10 @@ The page shows which driver is running. If the game doesn't start with a driver 
 can't be loaded), the next start goes back to the system driver and says so. Drivers differ a lot in
 speed for this game: try a few, and compare with the performance overlay.
 
-On some older Snapdragon phones the system driver makes the GPU hang after a few seconds to minutes
-of play and the game closes (seen on a Snapdragon 855 / Adreno 640 with a Qualcomm driver from
-2021). A Turnip driver runs the game there without these crashes, so if the game keeps closing on
-such a device, install one. After such a hang the next start names the driver that hung and offers
-another one before the game starts.
+On some older Snapdragon phones (Snapdragon 855/865/870 with a Qualcomm driver from 2021) the system
+driver made the GPU hang within seconds and the game closed. Since 0.9.2 the app avoids this; if the
+game still keeps closing on such a device, a Turnip driver runs it there. After a hang the next start
+names the driver that hung and offers another one before the game starts.
 
 ## Building
 
