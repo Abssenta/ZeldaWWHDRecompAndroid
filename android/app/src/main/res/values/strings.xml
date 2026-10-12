@@ -253,6 +253,14 @@
     <string name="cheat_inf_health">Infinite health</string>
     <string name="cheat_inf_magic">Infinite magic</string>
     <string name="cheat_inf_ammo">Infinite arrows and bombs</string>
+    <string name="cheat_moon_jump">Moon jump</string>
+    <string name="cheat_moon_jump_hint">Hold L (left shoulder button) to rise, steer with the left stick</string>
+    <string name="cheat_moon_rise">Moon jump: rise speed</string>
+    <string name="cheat_moon_fly">Moon jump: flight speed</string>
+    <string name="cheat_moon_nofall">Moon jump: no fall damage</string>
+    <string name="cheat_moon_nofall_hint">Landing after a flight never hurts</string>
+    <string name="cheat_moon_anims">Moon jump: random lift-off animations</string>
+    <string name="cheat_moon_anims_hint">Each lift-off picks one of 14 poses instead of the two jump poses</string>
     <string name="cheats_story_about">⚠️ Story cheats can change or break story events: the game may skip or repeat scenes that teach or check them. Save to a spare file first.</string>
     <string name="cheats_story_confirm">This can change or break story events. Save to a spare file first. Apply it?</string>
     <string name="cheat_apply">Apply</string>

@@ -83,6 +83,19 @@ The original project (macOS, the 60 fps modes, decompilation tools) is described
 
 ## Version history
 
+**0.9.3**
+
+- Moon jump cheat (Mods › Cheats): hold L to rise, from the ground or the water, and steer with the
+  left stick until Link lands. Rise and flight speed can be chosen, landings can be free of fall
+  damage, and lift-off can use random poses.
+- Much less memory: shaders no longer keep their source text once they are built (about 1.4 GB less
+  on a Snapdragon 855 after a long session). Android had closed the game for low memory around
+  Dragon Roost on phones with 6 GB (likely issue #30).
+- Save states from before 0.9.2 are converted to the new format when loaded; the save-state folder is
+  made again if it was deleted while the game ran.
+- Crash logs: the app's memory use and threads at the crash, and a log for the game aborting too.
+- No new preparation of the game code after the update.
+
 **0.9.2**
 
 - Fix for the GPU hangs with Qualcomm's older system drivers (issue #25: Snapdragon 855/865/870
@@ -275,8 +288,8 @@ back.)
   the next off (a press switches the one for what Link is doing, swimming or not), or only while L3
   is held. Fast forward of cutscenes and of dialogues: faster while ZR is held. **Cheats** (from the
   original project) change the save file you play: items, hearts, magic, rupees, infinite health,
-  magic and ammunition, and story cheats (save to a spare file first; they can change story
-  events).
+  magic and ammunition, a moon jump (hold L to rise, steer with the left stick) and story cheats
+  (save to a spare file first; they can change story events).
 - **Controls**: on-screen controls on or off, their size, whether the controls act as a Wii U
   GamePad or a Pro Controller, motion controls (gyro aiming), rumble (on the phone when the
   controller has none), and which controller button

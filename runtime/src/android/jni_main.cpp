@@ -521,6 +521,11 @@ JNI_FN(void, setOption)(JNIEnv* env, jclass, jstring name, jint value) {
     else if (n == "cheat_inf_health") mods::set_infinite(mods::kInfHealth, value != 0);
     else if (n == "cheat_inf_magic") mods::set_infinite(mods::kInfMagic, value != 0);
     else if (n == "cheat_inf_ammo") mods::set_infinite(mods::kInfAmmo, value != 0);
+    else if (n == "cheat_moon_jump") mods::set_infinite(mods::kMoonJump, value != 0);
+    else if (n == "cheat_moon_nofall") mods::set_infinite(mods::kMoonNoFall, value != 0);
+    else if (n == "cheat_moon_anims") mods::set_infinite(mods::kMoonAllAnims, value != 0);
+    else if (n == "cheat_moon_rise") mods::set_moon_jump_speeds(value, mods::moon_jump_fly());
+    else if (n == "cheat_moon_fly") mods::set_moon_jump_speeds(mods::moon_jump_rise(), value);
 }
 
 JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
@@ -547,6 +552,11 @@ JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
     if (n == "cheat_inf_health") return mods::infinite(mods::kInfHealth);
     if (n == "cheat_inf_magic") return mods::infinite(mods::kInfMagic);
     if (n == "cheat_inf_ammo") return mods::infinite(mods::kInfAmmo);
+    if (n == "cheat_moon_jump") return mods::infinite(mods::kMoonJump);
+    if (n == "cheat_moon_nofall") return mods::infinite(mods::kMoonNoFall);
+    if (n == "cheat_moon_anims") return mods::infinite(mods::kMoonAllAnims);
+    if (n == "cheat_moon_rise") return mods::moon_jump_rise();
+    if (n == "cheat_moon_fly") return mods::moon_jump_fly();
     return 0;
 }
 

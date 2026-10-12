@@ -351,10 +351,16 @@ static void cam_trace(uint32_t cam, const char* what) {
         interp::pass_t(), what, s.eye[0], s.eye[1], s.eye[2], s.center[0], s.center[1], s.center[2]);
 }
 
+namespace interp {
+std::atomic<uint32_t> g_last_camera{0};
+uint32_t last_camera() { return g_last_camera.load(std::memory_order_relaxed); }
+}  // namespace interp
+
 // camera_draw(camera_process_class*)
 extern "C" void hook_024FFC40(Cpu* c) {
     using namespace interp;
     uint32_t cam = c->r[3];
+    g_last_camera.store(cam, std::memory_order_relaxed);
     Prev* p = prev_for(cam);
     if (g_blend_draw && !true60::runs_60(cam)) {  // blended between the step drawn last (S) and the new one (S+1)
         CamState cur = read_cam(cam);
@@ -941,9 +947,15 @@ extern "C" void hook_0203593C(Cpu* c) {
     fx_pass_start();
     ss::service(c);  // save states: exact values are back in guest memory, all other threads idle
     mods::cheats_service();
-    // debug: WWHD_CRASH_TEST=n crashes the game thread after n steps (to check the crash log)
-    static long crashTest = getenv("WWHD_CRASH_TEST") ? atol(getenv("WWHD_CRASH_TEST")) : 0;
-    if (crashTest > 0 && --crashTest == 0) raise(SIGSEGV);
+    // debug: WWHD_CRASH_TEST=n crashes the game thread after n steps (to check the crash log; "a<n>":
+    // abort() instead, as a GPU driver does)
+    static const char* crashEnv = getenv("WWHD_CRASH_TEST");
+    static const bool crashAbort = crashEnv && crashEnv[0] == 'a';
+    static long crashTest = crashEnv ? atol(crashEnv + (crashAbort ? 1 : 0)) : 0;
+    if (crashTest > 0 && --crashTest == 0) {
+        if (crashAbort) abort();
+        raise(SIGSEGV);
+    }
     g_passes++;
     // test aid: WWHD_INTERP_AT_STEP=n switches interpolation on after n frames
     static uint64_t passes = 0;

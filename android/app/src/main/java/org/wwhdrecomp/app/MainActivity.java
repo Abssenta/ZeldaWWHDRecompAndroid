@@ -594,6 +594,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         Native.setOption("render_aspect", prefs.getInt("render_aspect", 0));
         for (String m : MODS) Native.setOption(m, prefs.getBoolean(m, false) ? 1 : 0);
         for (String c : CHEATS_INFINITE) Native.setOption(c, prefs.getBoolean(c, false) ? 1 : 0);
+        Native.setOption("cheat_moon_rise", prefs.getInt("cheat_moon_rise", 100));
+        Native.setOption("cheat_moon_fly", prefs.getInt("cheat_moon_fly", 100));
         Native.setOption("mod_camera_speed", prefs.getInt("mod_camera_speed", 100));
         Native.setOption("mod_run_speed", prefs.getInt("mod_run_speed", 100));
         Native.setOption("mod_swim_speed", prefs.getInt("mod_swim_speed", 100));
@@ -1143,7 +1145,7 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     // cheats (mods/cheats.cpp): the one-shot ones' bits (mods.h Cheat) and the switches kept as settings
     static final int CHEAT_ITEMS = 1, CHEAT_SWORD = 2, CHEAT_STATS = 4, CHEAT_SONGS = 8, CHEAT_TRIFORCE = 16, CHEAT_DUNGEON = 32,
                      CHEAT_KEY = 64;
-    static final String[] CHEATS_INFINITE = {"cheat_inf_health", "cheat_inf_magic", "cheat_inf_ammo"};
+    static final String[] CHEATS_INFINITE = {"cheat_inf_health", "cheat_inf_magic", "cheat_inf_ammo", "cheat_moon_jump", "cheat_moon_nofall", "cheat_moon_anims"};
 
     void cheat(int bit, int done) {
         Native.setOption("cheat", bit);
@@ -1154,6 +1156,9 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
                                   "mod_ff_cutscenes", "mod_ff_dialogues"};
     static final int[] CAMERA_SPEEDS = {50, 100, 150, 200};
     static final int[] RUN_SPEEDS = {100, 125, 150, 200, 250, 300, 400};  // 100: off
+    static final int[] MOON_RISE_SPEEDS = {50, 75, 100, 150, 200, 300};  // moon jump rise, percent
+    static final int[] MOON_FLY_SPEEDS = new int[20];  // moon jump flight, percent: 50..1000 in steps of 50
+    static { for (int i = 0; i < MOON_FLY_SPEEDS.length; i++) MOON_FLY_SPEEDS[i] = 50 * (i + 1); }
 
     // faster running ("mod_run") and swimming ("mod_swim") each apply always, or with L3: held, or
     // one press switches it on and off

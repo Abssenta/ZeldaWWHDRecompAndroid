@@ -545,14 +545,39 @@ final class OptionsMenu extends Dialog {
         submenu(R.string.cheat_items, R.string.cheat_items_hint, "", () -> a.cheat(MainActivity.CHEAT_ITEMS, R.string.cheat_items_done));
         submenu(R.string.cheat_sword, R.string.cheat_sword_hint, "", () -> a.cheat(MainActivity.CHEAT_SWORD, R.string.cheat_sword_done));
         submenu(R.string.cheat_stats, R.string.cheat_stats_hint, "", () -> a.cheat(MainActivity.CHEAT_STATS, R.string.cheat_stats_done));
-        int[] inf = {R.string.cheat_inf_health, R.string.cheat_inf_magic, R.string.cheat_inf_ammo};
-        for (int i = 0; i < inf.length; i++) {
+        int[] inf = {R.string.cheat_inf_health, R.string.cheat_inf_magic, R.string.cheat_inf_ammo, R.string.cheat_moon_jump};
+        int[] infHint = {0, 0, 0, R.string.cheat_moon_jump_hint};
+        for (int i = 0; i < inf.length; i++) {  // (the moon jump's no-fall-damage switch comes below its speeds)
             String key = MainActivity.CHEATS_INFINITE[i];
-            toggle(inf[i], 0, a.prefs.getBoolean(key, false), on -> {
+            toggle(inf[i], infHint[i], a.prefs.getBoolean(key, false), on -> {
                 a.prefs.edit().putBoolean(key, on).apply();
                 Native.setOption(key, on ? 1 : 0);
             });
         }
+        // the moon jump's rise and flight speed, in percent of the tested values
+        String[] moonKey = {"cheat_moon_rise", "cheat_moon_fly"};
+        int[] moonLabel = {R.string.cheat_moon_rise, R.string.cheat_moon_fly};
+        int[][] moonSpeeds = {MainActivity.MOON_RISE_SPEEDS, MainActivity.MOON_FLY_SPEEDS};
+        for (int i = 0; i < moonKey.length; i++) {
+            String key = moonKey[i];
+            int[] speeds = moonSpeeds[i];
+            String[] pct = new String[speeds.length];
+            for (int j = 0; j < pct.length; j++) pct[j] = speeds[j] + "%";
+            int cur = java.util.Arrays.binarySearch(speeds, a.prefs.getInt(key, 100));
+            if (cur < 0) cur = java.util.Arrays.binarySearch(speeds, 100);
+            choice(moonLabel[i], 0, pct, cur, k -> {
+                a.prefs.edit().putInt(key, speeds[k]).apply();
+                Native.setOption(key, speeds[k]);
+            });
+        }
+        toggle(R.string.cheat_moon_nofall, R.string.cheat_moon_nofall_hint, a.prefs.getBoolean("cheat_moon_nofall", false), on -> {
+            a.prefs.edit().putBoolean("cheat_moon_nofall", on).apply();
+            Native.setOption("cheat_moon_nofall", on ? 1 : 0);
+        });
+        toggle(R.string.cheat_moon_anims, R.string.cheat_moon_anims_hint, a.prefs.getBoolean("cheat_moon_anims", false), on -> {
+            a.prefs.edit().putBoolean("cheat_moon_anims", on).apply();
+            Native.setOption("cheat_moon_anims", on ? 1 : 0);
+        });
         note(a.getString(R.string.cheats_story_about));
         int[][] story = {{R.string.cheat_songs, MainActivity.CHEAT_SONGS, R.string.cheat_songs_done},
                          {R.string.cheat_triforce, MainActivity.CHEAT_TRIFORCE, R.string.cheat_triforce_done},
