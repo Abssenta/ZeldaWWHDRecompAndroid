@@ -466,6 +466,8 @@ final class OptionsMenu extends Dialog {
             String[] where = {a.getString(R.string.drc_second_display), a.getString(R.string.drc_in_layout)};
             choice(R.string.opt_drc_display, R.string.opt_drc_display_hint, where, a.drcOnSecondDisplay() ? 0 : 1,
                     i -> a.setDrcOnSecondDisplay(i == 0));
+            choice(R.string.opt_drc_aspect, R.string.opt_drc_aspect_hint, a.getResources().getStringArray(R.array.aspect_modes),
+                   a.prefs.getInt("drc_aspect", 0), a::setDrcAspect);
         }
         String[] layouts = a.getResources().getStringArray(R.array.layouts);
         if (!MainActivity.NEW_TOUCH_CONTROLS) layouts = java.util.Arrays.copyOf(layouts, MainActivity.LAYOUT_ON_DEMAND);

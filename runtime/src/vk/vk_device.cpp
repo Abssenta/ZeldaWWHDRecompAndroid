@@ -1338,6 +1338,8 @@ bool ensure_swapchain(Swapchain& sc, bool main = true) {
 // how the TV picture fills its rect (the app's setting): 0 keeps its aspect ratio with bars,
 // 1 stretches it over the rect, 2 fills the rect keeping the aspect ratio (the overflow is cut)
 std::atomic<int> g_tv_aspect{0};
+// the same for the GamePad picture on its own display (dual-screen devices)
+std::atomic<int> g_drc_aspect{0};
 
 // rect for an image of aspect `a` in the given pixel rect, in 0..1 units of a window of `ext`
 void fit(const ScreenRect& r, float a, float out[4], VkExtent2D ext, int mode = 0) {
@@ -1517,7 +1519,7 @@ void present_drc_window() {
     vkCmdSetViewport(cmd, 0, 1, &vp);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_sc_drc.pipeline);
-    draw_screen(cmd, R.drc, ScreenRect{}, g_sc_drc.extent);  // the whole display, 16:9 with bars
+    draw_screen(cmd, R.drc, ScreenRect{}, g_sc_drc.extent, g_drc_aspect.load(std::memory_order_relaxed));  // the whole display
     vkCmdEndRenderPass(cmd);
     on_complete([acquire] { g_drc_acquire_free.push_back(acquire); });
     uint64_t submitId = submit(acquire, g_sc_drc.renderDone[idx]);
@@ -1987,6 +1989,8 @@ void request_frame_generation(bool on, const char* dll, bool quality, float flow
 
 void set_tv_aspect(int mode) { g_tv_aspect = std::clamp(mode, 0, 2); }
 int tv_aspect() { return g_tv_aspect.load(); }
+void set_drc_aspect(int mode) { g_drc_aspect = std::clamp(mode, 0, 2); }
+int drc_aspect() { return g_drc_aspect.load(); }
 
 void set_layout(ScreenRect tv, ScreenRect drc, bool drcVisible) {
     std::lock_guard<std::mutex> wl(g_window_mutex);

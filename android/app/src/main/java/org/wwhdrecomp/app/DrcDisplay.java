@@ -29,6 +29,9 @@ final class DrcDisplay implements DisplayManager.DisplayListener {
         void onDrcDisplayChanged(boolean active);
     }
 
+    /** how the picture fills the display (MainActivity.setDrcAspect): 0 16:9 with bars, 1 stretched, 2 filled, edges cut */
+    static volatile int aspect;
+
     private final MainActivity activity;
     private final Listener listener;
     private final DisplayManager displays;
@@ -142,11 +145,16 @@ final class DrcDisplay implements DisplayManager.DisplayListener {
             Native.drcSurfaceChanged(null);
         }
 
-        // the GamePad picture fills the display at 16:9 (bars where the display has another shape)
+        // where the GamePad picture is on the display (the same rect the renderer draws, vk_device.cpp
+        // fit): 16:9 with bars, stretched over the whole display, or 16:9 filling it with the edges cut
         private boolean touch(MotionEvent e) {
             if (w == 0 || h == 0) return false;
             float pw = w, ph = h, px = 0, py = 0;
-            if (pw / ph > 16f / 9f) {
+            int mode = aspect;
+            boolean wider = pw / ph > 16f / 9f;
+            if (mode == 1) {
+                // stretched: the picture is the display
+            } else if (mode == 0 ? wider : !wider) {
                 pw = ph * 16f / 9f;
                 px = (w - pw) / 2;
             } else {

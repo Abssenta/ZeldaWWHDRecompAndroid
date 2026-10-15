@@ -496,6 +496,7 @@ JNI_FN(void, setOption)(JNIEnv* env, jclass, jstring name, jint value) {
     else if (n == "capture") gfx::request_capture();
     else if (n == "res_scale") gfx::set_resolution_scale(value / 100.0f);
     else if (n == "tv_aspect") gfx::set_tv_aspect(value);
+    else if (n == "drc_aspect") gfx::set_drc_aspect(value);
     // aspect ratio the game renders at (aspect.cpp): 0 = 16:9 (original), 1 = the screen's shape
     else if (n == "render_aspect") aspect::set_mode(value == 1 ? aspect::kWindow : aspect::kOriginal);
     // frame interpolation (interp.cpp): 0 off, else the frame rate (60, 120)
@@ -535,6 +536,7 @@ JNI_FN(jint, getOption)(JNIEnv* env, jclass, jstring name) {
     if (n == "aniso") return gfx::aniso_enabled();
     if (n == "pro_controller") return input::pro_controller();
     if (n == "tv_aspect") return gfx::tv_aspect();
+    if (n == "drc_aspect") return gfx::drc_aspect();
     if (n == "render_aspect") return aspect::mode() == aspect::kWindow ? 1 : 0;
     if (n == "interp_fps") return interp::mode() == 1 ? interp::fps() : 0;
     if (n == "mod_direct_camera") return mods::direct_camera();

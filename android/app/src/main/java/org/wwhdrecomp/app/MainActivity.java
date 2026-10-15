@@ -592,6 +592,8 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
         Native.setOption("pro_controller", prefs.getBoolean("pro_controller", Native.getOption("pro_controller") != 0) ? 1 : 0);
         Native.setOption("tv_aspect", prefs.getInt("tv_aspect", 0));
         Native.setOption("render_aspect", prefs.getInt("render_aspect", 0));
+        Native.setOption("drc_aspect", prefs.getInt("drc_aspect", 0));
+        DrcDisplay.aspect = prefs.getInt("drc_aspect", 0);
         for (String m : MODS) Native.setOption(m, prefs.getBoolean(m, false) ? 1 : 0);
         for (String c : CHEATS_INFINITE) Native.setOption(c, prefs.getBoolean(c, false) ? 1 : 0);
         Native.setOption("cheat_moon_rise", prefs.getInt("cheat_moon_rise", 100));
@@ -667,6 +669,13 @@ public final class MainActivity extends Activity implements SurfaceHolder.Callba
     void setDrcOnSecondDisplay(boolean on) {
         prefs.edit().putBoolean("drc_second_display", on).apply();
         updateDrcDisplay();
+    }
+
+    /** how the GamePad picture fills the second display: 0 16:9 with bars, 1 stretched, 2 filled (edges cut) */
+    void setDrcAspect(int mode) {
+        prefs.edit().putInt("drc_aspect", mode).apply();
+        DrcDisplay.aspect = mode;
+        Native.setOption("drc_aspect", mode);
     }
 
     private void updateDrcDisplay() {

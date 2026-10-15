@@ -47,5 +47,7 @@ void request_frame_generation(bool on, const char* dll, bool quality, float flow
 // how the TV picture fills its area: 0 original aspect ratio (bars), 1 stretched, 2 filled (cut)
 void set_tv_aspect(int mode);
 int tv_aspect();
+void set_drc_aspect(int mode);  // the GamePad picture on its own display, as set_tv_aspect
+int drc_aspect();
 
 }  // namespace gfx
